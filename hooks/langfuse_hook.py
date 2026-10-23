@@ -536,6 +536,7 @@ def create_trace(
     if project_name:
         tags.append(project_name)
 
+<<<<<<< Updated upstream
     # Check permission governance data BEFORE opening the trace-attribute
     # propagation context, so the "has-permission-flags" tag (if applicable)
     # is included in the single set of attributes pushed to every child
@@ -550,6 +551,13 @@ def create_trace(
     # within this block. Replaces the old imperative update_current_trace()
     # calls, removed in Langfuse Python SDK 4.x.
     # See: https://langfuse.com/docs/observability/sdk/upgrade-path/python-v3-to-v4
+=======
+    # Create root span (implicitly creates a trace), then propagate trace-level
+    # attributes (session_id, tags, metadata) to every observation created within
+    # this context. This replaces the old update_current_trace() imperative call,
+    # which was removed in Langfuse Python SDK 4.x in favor of an explicit
+    # propagation context (see: https://langfuse.com/docs/observability/sdk/upgrade-path/python-v3-to-v4).
+>>>>>>> Stashed changes
     with langfuse.start_as_current_observation(
         name=f"Turn {turn_num}",
         input={"role": "user", "content": user_text},
@@ -559,7 +567,11 @@ def create_trace(
             "project": project_name,
         },
     ) as trace_span:
+<<<<<<< Updated upstream
       with propagate_attributes(
+=======
+      with langfuse.propagate_attributes(
+>>>>>>> Stashed changes
         session_id=session_id,
         tags=tags,
         metadata={
@@ -595,9 +607,16 @@ def create_trace(
                 tool_span.update(output=tool_call["output"])
             debug(f"Created span for tool: {tool_call['name']}")
 
+<<<<<<< Updated upstream
         # Add permission governance span (flag detection already done above,
         # before propagate_attributes, so this span inherits the tag correctly)
         if perm_events:
+=======
+        # Add permission governance data
+        perm_events = get_permission_flags(session_id)
+        if perm_events:
+            tags.append("has-permission-flags")
+>>>>>>> Stashed changes
             flag_summary = {}
             for evt in perm_events:
                 for flag in evt.get("flags", []):
@@ -611,6 +630,7 @@ def create_trace(
 
         # Update trace with output
         trace_span.update(output={"role": "assistant", "content": final_output})
+
 
     debug(f"Created trace for turn {turn_num}")
 

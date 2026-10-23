@@ -141,6 +141,11 @@ echo ""
 echo "Installing langfuse Python package..."
 #$PYTHON -m pip install --quiet --upgrade pip
 #$PYTHON -m pip install --quiet langfuse
+<<<<<<< Updated upstream
+=======
+#$PYTHON -m pip install --quiet --upgrade pip --break-system-packages
+#$PYTHON -m pip install --quiet langfuse --break-system-packages
+>>>>>>> Stashed changes
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Installed langfuse package${NC}"

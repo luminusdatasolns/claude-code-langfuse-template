@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 #!/usr/bin/env python3.12
 """
 Sends Claude Code traces to Langfuse after each response.
@@ -7,14 +8,37 @@ Opt-in: Only runs when TRACE_TO_LANGFUSE=true is set in project settings.
 
 Resilience: If Langfuse is unavailable, traces are queued locally and
 automatically drained on the next successful connection.
+=======
+#!/usr/bin/env python3
+"""
+Langfuse Hook for Claude Code
+
+Captures Claude Code conversations as structured traces in Langfuse.
+Runs as a Stop hook — after each assistant response.
+
+What gets captured:
+- User prompts (full text)
+- Assistant responses (full text)
+- Tool invocations (name, input, output)
+- Session grouping
+- Model info and timing
+
+Opt-in: Only runs when TRACE_TO_LANGFUSE=true is set.
+Graceful failure: All errors exit 0 (non-blocking).
+>>>>>>> Stashed changes
 """
 
 import json
 import os
+<<<<<<< Updated upstream
+=======
+import re
+>>>>>>> Stashed changes
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+<<<<<<< Updated upstream
 import socket
 
 # Prevent local directories named "langfuse" (e.g., Docker Compose project dirs)
@@ -24,26 +48,71 @@ _original_path = sys.path[:]
 sys.path = [p for p in sys.path if p not in ("", ".") and Path(p).resolve() != Path.cwd().resolve()]
 
 # Check if Langfuse is available
+=======
+
+>>>>>>> Stashed changes
 try:
     from langfuse import Langfuse
 except ImportError:
     print("Error: langfuse package not installed. Run: pip install langfuse", file=sys.stderr)
     sys.exit(0)
+<<<<<<< Updated upstream
 finally:
     sys.path = _original_path
+=======
+>>>>>>> Stashed changes
 
 # Configuration
 LOG_FILE = Path.home() / ".claude" / "state" / "langfuse_hook.log"
 STATE_FILE = Path.home() / ".claude" / "state" / "langfuse_state.json"
+<<<<<<< Updated upstream
 QUEUE_FILE = Path.home() / ".claude" / "state" / "pending_traces.jsonl"
 DEBUG = os.environ.get("CC_LANGFUSE_DEBUG", "").lower() == "true"
 HEALTH_CHECK_TIMEOUT = 2  # seconds
 PERMISSION_EVENTS_FILE = Path.home() / ".claude" / "logs" / "permission-events.jsonl"
+=======
+DEBUG = os.environ.get("CC_LANGFUSE_DEBUG", "").lower() == "true"
+LOG_MAX_SIZE_BYTES = 10 * 1024 * 1024  # 10MB max log size
+LOG_BACKUP_COUNT = 3  # Keep 3 rotated logs
+REDACT_SECRETS = os.environ.get("CC_LANGFUSE_REDACT", "true").lower() == "true"
+
+# Patterns for secret redaction (conservative - only obvious secrets)
+SECRET_PATTERNS = [
+    (r'sk-[a-zA-Z0-9]{20,}', 'sk-[REDACTED]'),  # OpenAI/Anthropic keys
+    (r'sk-lf-[a-zA-Z0-9-]{20,}', 'sk-lf-[REDACTED]'),  # Langfuse keys
+    (r'Bearer [a-zA-Z0-9._-]{20,}', 'Bearer [REDACTED]'),  # Bearer tokens
+    (r'token["\']?\s*[:=]\s*["\']?[a-zA-Z0-9._-]{20,}', 'token: [REDACTED]'),  # Generic tokens
+    (r'password["\']?\s*[:=]\s*["\']?[^\s"\']{8,}', 'password: [REDACTED]'),  # Passwords
+    (r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9._-]{16,}', 'api_key: [REDACTED]'),  # API keys
+]
+
+
+def rotate_log_if_needed() -> None:
+    """Rotate log file if it exceeds max size."""
+    if not LOG_FILE.exists():
+        return
+    try:
+        if LOG_FILE.stat().st_size > LOG_MAX_SIZE_BYTES:
+            # Rotate existing backups
+            for i in range(LOG_BACKUP_COUNT - 1, 0, -1):
+                old = LOG_FILE.with_suffix(f".log.{i}")
+                new = LOG_FILE.with_suffix(f".log.{i + 1}")
+                if old.exists():
+                    old.rename(new)
+            # Rotate current log
+            LOG_FILE.rename(LOG_FILE.with_suffix(".log.1"))
+    except (IOError, OSError):
+        pass  # Ignore rotation errors
+>>>>>>> Stashed changes
 
 
 def log(level: str, message: str) -> None:
     """Log a message to the log file."""
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+<<<<<<< Updated upstream
+=======
+    rotate_log_if_needed()
+>>>>>>> Stashed changes
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(LOG_FILE, "a") as f:
         f.write(f"{timestamp} [{level}] {message}\n")
@@ -55,6 +124,7 @@ def debug(message: str) -> None:
         log("DEBUG", message)
 
 
+<<<<<<< Updated upstream
 def check_langfuse_health(host: str) -> bool:
     """Quick health check to see if Langfuse is reachable.
 
@@ -160,6 +230,33 @@ def drain_queue(langfuse: Langfuse) -> int:
     clear_queue()
     log("INFO", f"Successfully drained {drained} traces")
     return drained
+=======
+def sanitize_text(text: str) -> str:
+    """Redact potential secrets from text content.
+
+    This applies conservative patterns to avoid sending API keys,
+    passwords, and tokens to Langfuse. Can be disabled by setting
+    CC_LANGFUSE_REDACT=false.
+    """
+    if not REDACT_SECRETS or not text:
+        return text
+
+    result = text
+    for pattern, replacement in SECRET_PATTERNS:
+        result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+    return result
+
+
+def sanitize_value(value: Any) -> Any:
+    """Recursively sanitize a value (string, dict, or list)."""
+    if isinstance(value, str):
+        return sanitize_text(value)
+    elif isinstance(value, dict):
+        return {k: sanitize_value(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [sanitize_value(item) for item in value]
+    return value
+>>>>>>> Stashed changes
 
 
 def load_state() -> dict:
@@ -238,7 +335,10 @@ def merge_assistant_parts(parts: list) -> dict:
         elif content:
             merged_content.append({"type": "text", "text": str(content)})
 
+<<<<<<< Updated upstream
     # Use the structure from the first part
+=======
+>>>>>>> Stashed changes
     result = parts[0].copy()
     if "message" in result:
         result["message"] = result["message"].copy()
@@ -250,6 +350,7 @@ def merge_assistant_parts(parts: list) -> dict:
 
 
 def extract_project_name(project_dir: Path) -> str:
+<<<<<<< Updated upstream
     """Extract a human-readable project name from the Claude projects directory name.
 
     Directory names look like: -Users-doneyli-djg-family-office
@@ -263,6 +364,19 @@ def extract_project_name(project_dir: Path) -> str:
     # Take everything after the username (3rd segment onward)
     if len(parts) > 3:
         # parts[0] is empty (leading dash), parts[1] is "Users", parts[2] is username
+=======
+    """Extract a human-readable project name from Claude's project directory name.
+
+    Claude Code stores transcripts in directories named like:
+    -Users-username-project-name
+
+    We extract the project name portion.
+    """
+    dir_name = project_dir.name
+    parts = dir_name.split("-")
+    if len(parts) > 3:
+        # Skip the first 3 parts (-Users-username) and join the rest
+>>>>>>> Stashed changes
         project_parts = parts[3:]
         return "-".join(project_parts)
     return dir_name
@@ -271,9 +385,14 @@ def extract_project_name(project_dir: Path) -> str:
 def find_latest_transcript() -> tuple[str, Path, str] | None:
     """Find the most recently modified transcript file.
 
+<<<<<<< Updated upstream
     Claude Code stores transcripts as *.jsonl files directly in the project directory.
     Main conversation files have UUID names, agent files have agent-*.jsonl names.
     The session ID is stored inside each JSON line.
+=======
+    Claude Code stores transcripts as .jsonl files in:
+    ~/.claude/projects/<project-dir>/<session-id>.jsonl
+>>>>>>> Stashed changes
 
     Returns: (session_id, transcript_path, project_name) or None
     """
@@ -287,11 +406,18 @@ def find_latest_transcript() -> tuple[str, Path, str] | None:
     latest_mtime = 0
     latest_project_dir = None
 
+<<<<<<< Updated upstream
     for project_dir in projects_dir.iterdir():
         if not project_dir.is_dir():
             continue
 
         # Look for all .jsonl files directly in the project directory
+=======
+    # Scan all project directories for transcript files
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+>>>>>>> Stashed changes
         for transcript_file in project_dir.glob("*.jsonl"):
             mtime = transcript_file.stat().st_mtime
             if mtime > latest_mtime:
@@ -300,8 +426,13 @@ def find_latest_transcript() -> tuple[str, Path, str] | None:
                 latest_project_dir = project_dir
 
     if latest_file and latest_project_dir:
+<<<<<<< Updated upstream
         # Extract session ID from the first line of the file
         try:
+=======
+        try:
+            # Read first line to get session ID
+>>>>>>> Stashed changes
             first_line = latest_file.read_text().split("\n")[0]
             first_msg = json.loads(first_line)
             session_id = first_msg.get("sessionId", latest_file.stem)
@@ -316,6 +447,7 @@ def find_latest_transcript() -> tuple[str, Path, str] | None:
     return None
 
 
+<<<<<<< Updated upstream
 def find_modified_transcripts(state: dict, max_sessions: int = 10) -> list[tuple[str, Path, str]]:
     """Find all transcripts that have been modified since their last state update.
 
@@ -482,6 +614,8 @@ def get_permission_flags(session_id: str) -> list[dict]:
     return events
 
 
+=======
+>>>>>>> Stashed changes
 def create_trace(
     langfuse: Langfuse,
     session_id: str,
@@ -491,6 +625,7 @@ def create_trace(
     tool_results: list,
     project_name: str = "",
 ) -> None:
+<<<<<<< Updated upstream
     """Create a Langfuse trace for a single turn using the new SDK API."""
     # Extract user text
     user_text = get_text_content(user_msg)
@@ -501,11 +636,38 @@ def create_trace(
         final_output = get_text_content(assistant_msgs[-1])
 
     # Get model info from first assistant message
+=======
+    """Create a Langfuse trace for a single conversation turn.
+
+    A turn consists of:
+    - User message
+    - Assistant response(s)
+    - Tool calls (if any)
+    - Tool results (if any)
+
+    The trace is structured as:
+    - Trace (top-level container)
+      - Generation span (Claude's response)
+      - Tool spans (one per tool call)
+    """
+    user_text = sanitize_text(get_text_content(user_msg))
+
+    # Get final assistant output
+    final_output = ""
+    if assistant_msgs:
+        final_output = sanitize_text(get_text_content(assistant_msgs[-1]))
+
+    # Extract model info from first assistant message
+>>>>>>> Stashed changes
     model = "claude"
     if assistant_msgs and isinstance(assistant_msgs[0], dict) and "message" in assistant_msgs[0]:
         model = assistant_msgs[0]["message"].get("model", "claude")
 
+<<<<<<< Updated upstream
     # Collect all tool calls and results
+=======
+    # Collect all tool calls with their results
+>>>>>>> Stashed changes
     all_tool_calls = []
     for assistant_msg in assistant_msgs:
         tool_calls = get_tool_calls(assistant_msg)
@@ -526,17 +688,30 @@ def create_trace(
 
             all_tool_calls.append({
                 "name": tool_name,
+<<<<<<< Updated upstream
                 "input": tool_input,
                 "output": tool_output,
                 "id": tool_id,
             })
 
     # Build tags list
+=======
+                "input": sanitize_value(tool_input),
+                "output": sanitize_value(tool_output),
+                "id": tool_id,
+            })
+
+    # Build tags for filtering
+>>>>>>> Stashed changes
     tags = ["claude-code"]
     if project_name:
         tags.append(project_name)
 
+<<<<<<< Updated upstream
     # Create root span (implicitly creates a trace), then set trace-level attributes
+=======
+    # Create the trace with spans for each tool call
+>>>>>>> Stashed changes
     with langfuse.start_as_current_span(
         name=f"Turn {turn_num}",
         input={"role": "user", "content": user_text},
@@ -546,7 +721,11 @@ def create_trace(
             "project": project_name,
         },
     ) as trace_span:
+<<<<<<< Updated upstream
         # Set session_id and tags on the underlying trace
+=======
+        # Update trace-level metadata
+>>>>>>> Stashed changes
         langfuse.update_current_trace(
             session_id=session_id,
             tags=tags,
@@ -558,13 +737,18 @@ def create_trace(
             },
         )
 
+<<<<<<< Updated upstream
         # Create generation for the LLM response
+=======
+        # Create generation span for Claude's response
+>>>>>>> Stashed changes
         with langfuse.start_as_current_observation(
             name="Claude Response",
             as_type="generation",
             model=model,
             input={"role": "user", "content": user_text},
             output={"role": "assistant", "content": final_output},
+<<<<<<< Updated upstream
             metadata={
                 "tool_count": len(all_tool_calls),
             },
@@ -572,6 +756,13 @@ def create_trace(
             pass
 
         # Create spans for tool calls
+=======
+            metadata={"tool_count": len(all_tool_calls)},
+        ):
+            pass
+
+        # Create spans for each tool call
+>>>>>>> Stashed changes
         for tool_call in all_tool_calls:
             with langfuse.start_as_current_span(
                 name=f"Tool: {tool_call['name']}",
@@ -584,6 +775,7 @@ def create_trace(
                 tool_span.update(output=tool_call["output"])
             debug(f"Created span for tool: {tool_call['name']}")
 
+<<<<<<< Updated upstream
         # Add permission governance data
         perm_events = get_permission_flags(session_id)
         if perm_events:
@@ -601,22 +793,48 @@ def create_trace(
                 perm_span.update(output={"events": perm_events})
 
         # Update trace with output
+=======
+        # Update trace with final output
+>>>>>>> Stashed changes
         trace_span.update(output={"role": "assistant", "content": final_output})
 
     debug(f"Created trace for turn {turn_num}")
 
 
 def process_transcript(langfuse: Langfuse, session_id: str, transcript_file: Path, state: dict, project_name: str = "") -> int:
+<<<<<<< Updated upstream
     """Process a transcript file and create traces for new turns."""
     # Get previous state for this session
+=======
+    """Process a transcript file and create traces for new turns.
+
+    This function implements incremental processing:
+    - Reads the state file to find where we left off
+    - Processes only new messages since last run
+    - Groups messages into turns (user → assistant → tools)
+    - Creates a Langfuse trace for each complete turn
+    - Updates state with new position
+
+    Returns: Number of new turns processed
+    """
+    # Load session state
+>>>>>>> Stashed changes
     session_state = state.get(session_id, {})
     last_line = session_state.get("last_line", 0)
     turn_count = session_state.get("turn_count", 0)
 
+<<<<<<< Updated upstream
     # Read transcript
     lines = transcript_file.read_text().strip().split("\n")
     total_lines = len(lines)
 
+=======
+    # Read transcript file
+    lines = transcript_file.read_text().strip().split("\n")
+    total_lines = len(lines)
+
+    # Check if there are new lines to process
+>>>>>>> Stashed changes
     if last_line >= total_lines:
         debug(f"No new lines to process (last: {last_line}, total: {total_lines})")
         return 0
@@ -635,7 +853,12 @@ def process_transcript(langfuse: Langfuse, session_id: str, transcript_file: Pat
 
     debug(f"Processing {len(new_messages)} new messages")
 
+<<<<<<< Updated upstream
     # Group messages into turns (user -> assistant(s) -> tool_results)
+=======
+    # Group messages into turns
+    # A turn is: user message → assistant message(s) → tool results
+>>>>>>> Stashed changes
     turns = 0
     current_user = None
     current_assistants = []
@@ -647,18 +870,30 @@ def process_transcript(langfuse: Langfuse, session_id: str, transcript_file: Pat
         role = msg.get("type") or (msg.get("message", {}).get("role"))
 
         if role == "user":
+<<<<<<< Updated upstream
             # Check if this is a tool result
+=======
+            # Check if this is a tool result (user messages containing tool_result blocks)
+>>>>>>> Stashed changes
             if is_tool_result(msg):
                 current_tool_results.append(msg)
                 continue
 
+<<<<<<< Updated upstream
             # New user message - finalize previous turn
+=======
+            # Merge any pending assistant parts
+>>>>>>> Stashed changes
             if current_msg_id and current_assistant_parts:
                 merged = merge_assistant_parts(current_assistant_parts)
                 current_assistants.append(merged)
                 current_assistant_parts = []
                 current_msg_id = None
 
+<<<<<<< Updated upstream
+=======
+            # If we have a complete turn, create a trace
+>>>>>>> Stashed changes
             if current_user and current_assistants:
                 turns += 1
                 turn_num = turn_count + turns
@@ -672,11 +907,16 @@ def process_transcript(langfuse: Langfuse, session_id: str, transcript_file: Pat
             current_tool_results = []
 
         elif role == "assistant":
+<<<<<<< Updated upstream
+=======
+            # Extract message ID to detect multi-part messages
+>>>>>>> Stashed changes
             msg_id = None
             if isinstance(msg, dict) and "message" in msg:
                 msg_id = msg["message"].get("id")
 
             if not msg_id:
+<<<<<<< Updated upstream
                 # No message ID, treat as continuation
                 current_assistant_parts.append(msg)
             elif msg_id == current_msg_id:
@@ -684,19 +924,39 @@ def process_transcript(langfuse: Langfuse, session_id: str, transcript_file: Pat
                 current_assistant_parts.append(msg)
             else:
                 # New message ID - finalize previous message
+=======
+                # No ID means single-part message
+                current_assistant_parts.append(msg)
+            elif msg_id == current_msg_id:
+                # Same ID means continuation of current message
+                current_assistant_parts.append(msg)
+            else:
+                # New ID means new assistant message
+>>>>>>> Stashed changes
                 if current_msg_id and current_assistant_parts:
                     merged = merge_assistant_parts(current_assistant_parts)
                     current_assistants.append(merged)
 
+<<<<<<< Updated upstream
                 # Start new assistant message
                 current_msg_id = msg_id
                 current_assistant_parts = [msg]
 
     # Process final turn
+=======
+                current_msg_id = msg_id
+                current_assistant_parts = [msg]
+
+    # Handle final assistant message
+>>>>>>> Stashed changes
     if current_msg_id and current_assistant_parts:
         merged = merge_assistant_parts(current_assistant_parts)
         current_assistants.append(merged)
 
+<<<<<<< Updated upstream
+=======
+    # Create trace for final turn if complete
+>>>>>>> Stashed changes
     if current_user and current_assistants:
         turns += 1
         turn_num = turn_count + turns
@@ -714,6 +974,10 @@ def process_transcript(langfuse: Langfuse, session_id: str, transcript_file: Pat
 
 
 def main():
+<<<<<<< Updated upstream
+=======
+    """Main entry point for the hook."""
+>>>>>>> Stashed changes
     script_start = datetime.now()
     debug("Hook started")
 
@@ -722,6 +986,7 @@ def main():
         debug("Tracing disabled (TRACE_TO_LANGFUSE != true)")
         sys.exit(0)
 
+<<<<<<< Updated upstream
     # Check for required environment variables
     public_key = os.environ.get("CC_LANGFUSE_PUBLIC_KEY") or os.environ.get("LANGFUSE_PUBLIC_KEY")
     secret_key = os.environ.get("CC_LANGFUSE_SECRET_KEY") or os.environ.get("LANGFUSE_SECRET_KEY")
@@ -796,6 +1061,18 @@ def main():
         sys.exit(0)
 
     # Langfuse is available - initialize client
+=======
+    # Get Langfuse credentials from environment
+    public_key = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.environ.get("LANGFUSE_SECRET_KEY")
+    host = os.environ.get("LANGFUSE_HOST", "http://localhost:3050")
+
+    if not public_key or not secret_key:
+        log("ERROR", "Langfuse API keys not set")
+        sys.exit(0)
+
+    # Initialize Langfuse client
+>>>>>>> Stashed changes
     try:
         langfuse = Langfuse(
             public_key=public_key,
@@ -806,6 +1083,7 @@ def main():
         log("ERROR", f"Failed to initialize Langfuse client: {e}")
         sys.exit(0)
 
+<<<<<<< Updated upstream
     try:
         # First, drain any queued traces
         drained = drain_queue(langfuse)
@@ -832,11 +1110,38 @@ def main():
         duration = (datetime.now() - script_start).total_seconds()
         log("INFO", f"Processed {total_turns} turns from {len(modified_transcripts)} sessions (drained {drained} from queue) in {duration:.1f}s")
 
+=======
+    # Load state
+    state = load_state()
+
+    # Find latest transcript
+    result = find_latest_transcript()
+    if not result:
+        debug("No transcript file found")
+        sys.exit(0)
+
+    session_id, transcript_file, project_name = result
+
+    debug(f"Processing session: {session_id}, project: {project_name}")
+
+    # Process transcript and create traces
+    try:
+        turns = process_transcript(langfuse, session_id, transcript_file, state, project_name)
+        langfuse.flush()
+        duration = (datetime.now() - script_start).total_seconds()
+        log("INFO", f"Processed {turns} turns in {duration:.1f}s")
+
+        # Warn if hook is taking too long
+>>>>>>> Stashed changes
         if duration > 180:
             log("WARN", f"Hook took {duration:.1f}s (>3min), consider optimizing")
 
     except Exception as e:
+<<<<<<< Updated upstream
         log("ERROR", f"Failed to process transcripts: {e}")
+=======
+        log("ERROR", f"Failed to process transcript: {e}")
+>>>>>>> Stashed changes
         import traceback
         debug(traceback.format_exc())
     finally:
