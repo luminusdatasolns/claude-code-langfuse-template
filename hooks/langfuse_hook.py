@@ -25,7 +25,7 @@ sys.path = [p for p in sys.path if p not in ("", ".") and Path(p).resolve() != P
 
 # Check if Langfuse is available
 try:
-    from langfuse import Langfuse
+    from langfuse import Langfuse, propagate_attributes
 except ImportError:
     print("Error: langfuse package not installed. Run: pip install langfuse", file=sys.stderr)
     sys.exit(0)
@@ -536,8 +536,21 @@ def create_trace(
     if project_name:
         tags.append(project_name)
 
-    # Create root span (implicitly creates a trace), then set trace-level attributes
-    with langfuse.start_as_current_span(
+    # Check permission governance data BEFORE opening the trace-attribute
+    # propagation context, so the "has-permission-flags" tag (if applicable)
+    # is included in the single set of attributes pushed to every child
+    # observation. This avoids needing a second, retroactive tag update,
+    # which the SDK 4.x propagate_attributes() model doesn't support.
+    perm_events = get_permission_flags(session_id)
+    if perm_events:
+        tags.append("has-permission-flags")
+
+    # Create root span (implicitly creates a trace), then propagate trace-level
+    # attributes (session_id, tags, metadata) to every observation created
+    # within this block. Replaces the old imperative update_current_trace()
+    # calls, removed in Langfuse Python SDK 4.x.
+    # See: https://langfuse.com/docs/observability/sdk/upgrade-path/python-v3-to-v4
+    with langfuse.start_as_current_observation(
         name=f"Turn {turn_num}",
         input={"role": "user", "content": user_text},
         metadata={
@@ -546,18 +559,16 @@ def create_trace(
             "project": project_name,
         },
     ) as trace_span:
-        # Set session_id and tags on the underlying trace
-        langfuse.update_current_trace(
-            session_id=session_id,
-            tags=tags,
-            metadata={
-                "source": "claude-code",
-                "turn_number": turn_num,
-                "session_id": session_id,
-                "project": project_name,
-            },
-        )
-
+      with propagate_attributes(
+        session_id=session_id,
+        tags=tags,
+        metadata={
+            "source": "claude-code",
+            "turn_number": turn_num,
+            "session_id": session_id,
+            "project": project_name,
+        },
+      ):
         # Create generation for the LLM response
         with langfuse.start_as_current_observation(
             name="Claude Response",
@@ -573,7 +584,7 @@ def create_trace(
 
         # Create spans for tool calls
         for tool_call in all_tool_calls:
-            with langfuse.start_as_current_span(
+            with langfuse.start_as_current_observation(
                 name=f"Tool: {tool_call['name']}",
                 input=tool_call["input"],
                 metadata={
@@ -584,16 +595,14 @@ def create_trace(
                 tool_span.update(output=tool_call["output"])
             debug(f"Created span for tool: {tool_call['name']}")
 
-        # Add permission governance data
-        perm_events = get_permission_flags(session_id)
+        # Add permission governance span (flag detection already done above,
+        # before propagate_attributes, so this span inherits the tag correctly)
         if perm_events:
-            tags.append("has-permission-flags")
-            langfuse.update_current_trace(tags=tags)
             flag_summary = {}
             for evt in perm_events:
                 for flag in evt.get("flags", []):
                     flag_summary[flag] = flag_summary.get(flag, 0) + 1
-            with langfuse.start_as_current_span(
+            with langfuse.start_as_current_observation(
                 name="Permission Events",
                 input={"flagged_event_count": len(perm_events), "flag_summary": flag_summary},
                 metadata={"source": "claude-governance"},
