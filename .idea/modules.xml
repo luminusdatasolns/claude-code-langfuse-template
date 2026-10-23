@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/claude-code-langfuse-template.iml" filepath="$PROJECT_DIR$/.idea/claude-code-langfuse-template.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/claude-code-langfuse-hook.iml" filepath="$PROJECT_DIR$/.idea/claude-code-langfuse-hook.iml" />
     </modules>
   </component>
 </project>
